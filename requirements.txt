@@ -1,0 +1,4 @@
+asammdf
+pandas
+numpy
+cantools >= 39.4.5
