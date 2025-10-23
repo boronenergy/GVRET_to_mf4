@@ -8,6 +8,7 @@ Clone and install dependencies:
    pip install -r requirements.txt
    ```
 
+
 ## Example (as a module)
 > **Note:** SavvyCAN uses nanoseconds (`ns`) by default for timestamps. If your GVRET file is from SavvyCAN, set `time_unit="ns"` (the default).
 ```python
@@ -19,6 +20,11 @@ convert_gvret_to_mf4(
    dbc_path="dbc_file.dbc",
    time_unit="ns"  # or "s", "ms", "us" as appropriate
 )
+```
+
+## Example (from the command line)
+```bash
+python -m gvret_to_mf4.core input.gvret output.mf4 dbc_file.dbc --time_unit ns
 ```
 
 ## License

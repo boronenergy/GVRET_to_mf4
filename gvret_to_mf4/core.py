@@ -2,15 +2,22 @@ from asammdf import MDF, Signal
 import pandas as pd
 import numpy as np
 import cantools
+import logging
 
 '''
 TODO:
 - re-test this file to make sure it still works
-- update requirements.txt with my installed versions of asammdf, pandas, numpy, cantools that are known to work
 - try importing this as submodule into firmware project
+- set output folder as a parameter OR can this be set using output file with relative pathing?
+- clarify what KeyError means when CAN ID isn't in DBC
+- try both python import and command line run
+- fix output files going into multiple MF4 files :(
+
+> turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
+- this is bad, can we fix this?
 '''
 
-def convert_gvret_to_mf4(input_file, output_file, dbc_path, time_unit="ns"):
+def convert_gvret_to_mf4(input_file, output_file, dbc_path, time_unit="ns") -> None:
     """
     Convert a GVRET log file to MF4 format using a DBC file.
     - input_file: path to the GVRET CSV log file
@@ -37,7 +44,7 @@ def convert_gvret_to_mf4(input_file, output_file, dbc_path, time_unit="ns"):
     pandas_unit = time_unit.lower()
     if pandas_unit not in valid_units:
         raise ValueError(f"Unsupported time_unit: {time_unit}. Choose from 's', 'ms', 'us', 'ns'.")
-    df["Time Stamp"] = pd.to_timedelta(df["Time Stamp"] - start_time, unit=pandas_unit).total_seconds()
+    df["Time Stamp"] = pd.to_timedelta(df["Time Stamp"] - start_time, unit=pandas_unit).dt.total_seconds()
 
     # Ensure ID is in integer format (assuming hexadecimal)
     df["ID"] = df["ID"].apply(lambda x: int(x, 16))
@@ -47,6 +54,8 @@ def convert_gvret_to_mf4(input_file, output_file, dbc_path, time_unit="ns"):
 
     # Add channels to the MDF file
     for _, row in df.iterrows():
+        if _ % 1000 == 0:
+            logging.info(f"Done row {_} of {len(df)}")
         # turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
         message = db.decode_message(row["ID"], bytes(row["Data"]), decode_choices=False)
         for signal in message:
@@ -55,7 +64,11 @@ def convert_gvret_to_mf4(input_file, output_file, dbc_path, time_unit="ns"):
             data[str(signal)][0].append(row["Time Stamp"])
             data[str(signal)][1].append(message[signal])
 
+    logging.info(f"File {input_file} converted successfully, saving to MDF4...")
     for key, value in data.items():
         sig = Signal(samples=value[1], timestamps=value[0], name=key, encoding='utf-8', unit='')
         mdf.append(sig)
+
     mdf.save(output_file)
+
+    logging.info(f"Saving to {output_file}.mf4")
