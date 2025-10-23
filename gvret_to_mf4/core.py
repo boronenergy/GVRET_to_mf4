@@ -9,10 +9,7 @@ import logging
 
 '''
 TODO:
-- re-test this file to make sure it still works
 - try importing this as submodule into firmware project
-- time axis is off by 100x, why?
-- speed up sorting?
 
 > turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
 - this is bad, can we fix this?
@@ -22,7 +19,7 @@ def convert_gvret_to_mf4(
     input_file: str,
     output_file: str,
     dbc_path: str,
-    time_unit: str = "ns"
+    time_unit: str = "us"
 ) -> None:
     """
     Convert a GVRET log file to MF4 format using a DBC file.
@@ -31,7 +28,7 @@ def convert_gvret_to_mf4(
         input_file (str): Path to the GVRET CSV log file.
         output_file (str): Path to save the MF4 file.
         dbc_path (str): Path to the DBC file for CAN decoding.
-        time_unit (str, optional): Unit of the time column ('s', 'ms', 'us', 'ns'). Defaults to 'ns'.
+        time_unit (str, optional): Unit of the time column ('s', 'ms', 'us'). Defaults to 'us'.
 
     Raises:
         ValueError: If the time_unit is not supported.
@@ -50,8 +47,6 @@ def convert_gvret_to_mf4(
         logging.error(f"DBC file not found: {dbc_path}")
         raise FileNotFoundError(f"DBC file not found: {dbc_path}")
 
-    logging.info(f"Reading input CSV: {input_file}")
-
     # Only read needed columns
     needed_cols = ["Time Stamp", "ID", "Extended", "Dir", "Bus", "LEN"] + [f"D{i}" for i in range(1, 9)]
     # Optimize dtypes: use category for repeated strings, smallest ints for numerics
@@ -65,8 +60,17 @@ def convert_gvret_to_mf4(
         **{f"D{i}": str for i in range(1, 9)}
     }
 
+    logging.info(f"Reading input CSV: {input_file}")
     try:
-        df = pd.read_csv(input_file, dtype=data_types, usecols=needed_cols, index_col=False, low_memory=False, engine='c')
+        df = pd.read_csv(
+            input_file,
+            dtype=data_types,
+            usecols=needed_cols,
+            index_col=False,
+            low_memory=False,
+            engine='c',
+            memory_map=True
+        )
     except Exception as e:
         logging.error(f"Failed to read input CSV: {e}")
         raise
@@ -95,10 +99,10 @@ def convert_gvret_to_mf4(
 
     # --- Robust time and ID conversion ---
     start_time = df["Time Stamp"].min()
-    valid_units = {"s", "ms", "us", "ns"}
+    valid_units = {"s", "ms", "us"}
     pandas_unit = time_unit.lower()
     if pandas_unit not in valid_units:
-        raise ValueError(f"Unsupported time_unit: {time_unit}. Choose from 's', 'ms', 'us', 'ns'.")
+        raise ValueError(f"Unsupported time_unit: {time_unit}. Choose from 's', 'ms', 'us'.")
     try:
         df["Time Stamp"] = pd.to_timedelta(df["Time Stamp"] - start_time, unit=pandas_unit).dt.total_seconds()
     except Exception as e:
@@ -126,6 +130,7 @@ def convert_gvret_to_mf4(
     logging.info(f"Starting CAN message decoding for {total_rows} rows...")
     for idx, row in enumerate(df.itertuples(index=False, name=None), 1):
         try:
+            # Turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
             message = db.decode_message(row[idx_id], bytes(row[idx_data]), decode_choices=False)
         except KeyError:
             continue
@@ -144,7 +149,6 @@ def convert_gvret_to_mf4(
 
     # Sort to ensure that each signal’s samples are in strictly increasing timestamp order in the MF4 file
     logging.info(f"File {input_file} converted successfully, sorting")
-    from concurrent.futures import ThreadPoolExecutor
     def sort_and_create_signal(args):
         key, value = args
         timestamps, samples = value[0], value[1]
@@ -168,6 +172,7 @@ def convert_gvret_to_mf4(
         )
         return sig
 
+    from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor() as executor:
         for sig in executor.map(sort_and_create_signal, data.items()):
             if sig is not None:

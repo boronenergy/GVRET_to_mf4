@@ -8,7 +8,7 @@ if __name__ == "__main__":
     parser.add_argument("input_file", help="Path to the GVRET CSV log file")
     parser.add_argument("output_file", help="Path to save the MF4 file")
     parser.add_argument("dbc_path", help="Path to the DBC file for CAN decoding")
-    parser.add_argument("--time_unit", default="ns", choices=["s", "ms", "us", "ns"], help="Unit of the time column: s, ms, us, ns (default: ns)")
+    parser.add_argument("--time_unit", default="us", choices=["s", "ms", "us"], help="Unit of the time column: s, ms, us (default: us)")
     args = parser.parse_args()
     convert_gvret_to_mf4(
         input_file=args.input_file,
