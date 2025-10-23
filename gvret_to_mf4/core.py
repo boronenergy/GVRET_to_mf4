@@ -1,7 +1,12 @@
 
 import logging
+import os
 import pandas as pd
 import numpy as np
+import binascii
+from asammdf import MDF, Signal
+import cantools
+from concurrent.futures import ThreadPoolExecutor
 
 def convert_gvret_to_mf4(
     input_file: str,
@@ -24,10 +29,7 @@ def convert_gvret_to_mf4(
         Exception: For other errors during conversion.
     """
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
-
     # Validate input files
-    import os
     if not os.path.isfile(input_file):
         logging.error(f"Input file not found: {input_file}")
         raise FileNotFoundError(f"Input file not found: {input_file}")
@@ -64,8 +66,8 @@ def convert_gvret_to_mf4(
         raise
 
     # Vectorized conversion of D1-D8 columns to bytes (must be after reading CSV)
-    import binascii
     hex_cols = [f'D{i}' for i in range(1, 9)]
+    df[hex_cols] = df[hex_cols].fillna('')
     df['DataHex'] = np.char.add.reduce([df[col].values for col in hex_cols])
     try:
         df['Data'] = df['DataHex'].str.lower().map(binascii.unhexlify)
@@ -75,7 +77,6 @@ def convert_gvret_to_mf4(
     df.drop(columns=['DataHex'], inplace=True)
 
     try:
-        import cantools
         db = cantools.database.load_file(dbc_path)
     except Exception as e:
         logging.error(f"Failed to load DBC file: {e}")
@@ -104,7 +105,6 @@ def convert_gvret_to_mf4(
         logging.error(f"Failed to convert CAN IDs: {e}")
         raise
 
-    from asammdf import MDF, Signal
     mdf = MDF()
     data = {}
     total_rows = len(df)
@@ -161,7 +161,6 @@ def convert_gvret_to_mf4(
         )
         return sig
 
-    from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor() as executor:
         for sig in executor.map(sort_and_create_signal, data.items()):
             if sig is not None:
