@@ -1,6 +1,6 @@
 import argparse
 import logging
-from core import convert_gvret_to_mf4
+from .core import convert_gvret_to_mf4
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

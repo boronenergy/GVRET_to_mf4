@@ -1,6 +1,5 @@
 
 import logging
-from typing import Any
 import pandas as pd
 import numpy as np
 from asammdf import MDF, Signal
@@ -15,6 +14,9 @@ TODO:
 - set output folder as a parameter OR can this be set using output file with relative pathing?
 - try both python import and command line run
 - time axis is off by 100x, why?
+- speed up sorting?
+- general speed ups without multiprocessing
+- get rid of sorting?
 
 > turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
 - this is bad, can we fix this?
