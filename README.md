@@ -24,7 +24,7 @@ convert_gvret_to_mf4(
 
 ## Example (from the command line)
 ```bash
-python -m gvret_to_mf4.core input.gvret output.mf4 dbc_file.dbc --time_unit ns
+python -m gvret_to_mf4 input.gvret output.mf4 dbc_file.dbc --time_unit ns
 ```
 
 ## License

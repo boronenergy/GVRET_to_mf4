@@ -12,11 +12,9 @@ TODO:
 - re-test this file to make sure it still works
 - try importing this as submodule into firmware project
 - set output folder as a parameter OR can this be set using output file with relative pathing?
-- try both python import and command line run
 - time axis is off by 100x, why?
 - speed up sorting?
 - general speed ups without multiprocessing
-- get rid of sorting?
 
 > turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
 - this is bad, can we fix this?
@@ -68,16 +66,18 @@ def convert_gvret_to_mf4(
     }
 
     try:
-        df = pd.read_csv(input_file, dtype=data_types, usecols=needed_cols, index_col=False)
+        df = pd.read_csv(input_file, dtype=data_types, usecols=needed_cols, index_col=False, low_memory=False, engine='c')
     except Exception as e:
         logging.error(f"Failed to read input CSV: {e}")
         raise
 
     # Vectorized conversion of D1-D8 columns to bytes (must be after reading CSV)
+    import binascii
     hex_cols = [f'D{i}' for i in range(1, 9)]
-    df['DataHex'] = df[hex_cols].agg(''.join, axis=1)
+    # Fastest vectorized concat for D1-D8
+    df['DataHex'] = np.char.add.reduce([df[col].values for col in hex_cols])
     try:
-        df['Data'] = df['DataHex'].apply(bytes.fromhex)
+        df['Data'] = df['DataHex'].str.lower().map(binascii.unhexlify)
     except Exception as e:
         logging.error(f"Failed to convert data bytes for some rows: {e}")
         raise
@@ -105,15 +105,9 @@ def convert_gvret_to_mf4(
         logging.error(f"Failed to convert time units: {e}")
         raise
 
-    def parse_id(x: str) -> int:
-        try:
-            # Ensure ID is in integer format (assuming hexadecimal)
-            return int(x, 16)
-        except Exception as e:
-            logging.error(f"Failed to parse CAN ID '{x}': {e}")
-            raise
     try:
-        df["ID"] = df["ID"].apply(parse_id)
+        # Ensure ID is in integer format (assuming hexadecimal)
+        df["ID"] = df["ID"].astype(str).apply(lambda x: int(x, 16))
     except Exception as e:
         logging.error(f"Failed to convert CAN IDs: {e}")
         raise
@@ -147,23 +141,26 @@ def convert_gvret_to_mf4(
                 data[signal] = ([], [])  # (timestamps, samples)
             data[signal][0].append(timestamp)
             data[signal][1].append(value)
-    logging.info(f"Finished CAN message decoding.")
 
-    logging.info(f"File {input_file} converted successfully, saving to MDF4...")
+    # Sort to ensure that each signal’s samples are in strictly increasing timestamp order in the MF4 file
+    logging.info(f"File {input_file} converted successfully, sorting")
     for key, value in data.items():
         timestamps, samples = value[0], value[1]
-        # Sort by timestamp and remove duplicates or out-of-order
-        sorted_pairs = sorted(zip(timestamps, samples))
-        sorted_timestamps = []
-        sorted_samples = []
-        last_ts = None
-        for ts, s in sorted_pairs:
-            if last_ts is None or ts > last_ts:
-                sorted_timestamps.append(ts)
-                sorted_samples.append(s)
-                last_ts = ts
-            # else: skip duplicate or out-of-order timestamp
-        sig = Signal(samples=sorted_samples, timestamps=sorted_timestamps, name=key, encoding='utf-8', unit='')
+        timestamps = np.array(timestamps)
+        samples = np.array(samples)
+        order = np.argsort(timestamps)
+        sorted_timestamps = timestamps[order]
+        sorted_samples = samples[order]
+        # Remove duplicates or out-of-order
+        if len(sorted_timestamps) == 0:
+            continue
+        keep = [0]
+        last_ts = sorted_timestamps[0]
+        for i in range(1, len(sorted_timestamps)):
+            if sorted_timestamps[i] > last_ts:
+                keep.append(i)
+                last_ts = sorted_timestamps[i]
+        sig = Signal(samples=sorted_samples[keep], timestamps=sorted_timestamps[keep], name=key, encoding='utf-8', unit='')
         mdf.append(sig)
 
     try:
