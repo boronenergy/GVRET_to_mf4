@@ -2,18 +2,6 @@
 import logging
 import pandas as pd
 import numpy as np
-from asammdf import MDF, Signal
-import cantools
-
-import logging
-
-'''
-TODO:
-- try importing this as submodule into firmware project
-
-> turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
-- this is bad, can we fix this?
-'''
 
 def convert_gvret_to_mf4(
     input_file: str,
@@ -78,7 +66,6 @@ def convert_gvret_to_mf4(
     # Vectorized conversion of D1-D8 columns to bytes (must be after reading CSV)
     import binascii
     hex_cols = [f'D{i}' for i in range(1, 9)]
-    # Fastest vectorized concat for D1-D8
     df['DataHex'] = np.char.add.reduce([df[col].values for col in hex_cols])
     try:
         df['Data'] = df['DataHex'].str.lower().map(binascii.unhexlify)
@@ -88,6 +75,7 @@ def convert_gvret_to_mf4(
     df.drop(columns=['DataHex'], inplace=True)
 
     try:
+        import cantools
         db = cantools.database.load_file(dbc_path)
     except Exception as e:
         logging.error(f"Failed to load DBC file: {e}")
@@ -116,6 +104,7 @@ def convert_gvret_to_mf4(
         logging.error(f"Failed to convert CAN IDs: {e}")
         raise
 
+    from asammdf import MDF, Signal
     mdf = MDF()
     data = {}
     total_rows = len(df)
