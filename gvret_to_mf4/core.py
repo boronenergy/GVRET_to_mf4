@@ -13,7 +13,6 @@ TODO:
 - try importing this as submodule into firmware project
 - time axis is off by 100x, why?
 - speed up sorting?
-- split into functions
 
 > turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
 - this is bad, can we fix this?
@@ -145,24 +144,34 @@ def convert_gvret_to_mf4(
 
     # Sort to ensure that each signal’s samples are in strictly increasing timestamp order in the MF4 file
     logging.info(f"File {input_file} converted successfully, sorting")
-    for key, value in data.items():
+    from concurrent.futures import ThreadPoolExecutor
+    def sort_and_create_signal(args):
+        key, value = args
         timestamps, samples = value[0], value[1]
         timestamps = np.array(timestamps)
         samples = np.array(samples)
+        if len(timestamps) == 0:
+            return None
         order = np.argsort(timestamps)
         sorted_timestamps = timestamps[order]
         sorted_samples = samples[order]
-        # Remove duplicates or out-of-order
-        if len(sorted_timestamps) == 0:
-            continue
-        keep = [0]
-        last_ts = sorted_timestamps[0]
-        for i in range(1, len(sorted_timestamps)):
-            if sorted_timestamps[i] > last_ts:
-                keep.append(i)
-                last_ts = sorted_timestamps[i]
-        sig = Signal(samples=sorted_samples[keep], timestamps=sorted_timestamps[keep], name=key, encoding='utf-8', unit='')
-        mdf.append(sig)
+        # Vectorized strictly increasing filter
+        mask = np.concatenate(([True], sorted_timestamps[1:] > sorted_timestamps[:-1]))
+        if not np.any(mask):
+            return None
+        sig = Signal(
+            samples=sorted_samples[mask],
+            timestamps=sorted_timestamps[mask],
+            name=key,
+            encoding='utf-8',
+            unit=''
+        )
+        return sig
+
+    with ThreadPoolExecutor() as executor:
+        for sig in executor.map(sort_and_create_signal, data.items()):
+            if sig is not None:
+                mdf.append(sig)
 
     try:
         mdf.save(output_file)
