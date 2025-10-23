@@ -11,10 +11,9 @@ import logging
 TODO:
 - re-test this file to make sure it still works
 - try importing this as submodule into firmware project
-- set output folder as a parameter OR can this be set using output file with relative pathing?
 - time axis is off by 100x, why?
 - speed up sorting?
-- general speed ups without multiprocessing
+- split into functions
 
 > turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
 - this is bad, can we fix this?
@@ -51,6 +50,8 @@ def convert_gvret_to_mf4(
     if not os.path.isfile(dbc_path):
         logging.error(f"DBC file not found: {dbc_path}")
         raise FileNotFoundError(f"DBC file not found: {dbc_path}")
+
+    logging.info(f"Reading input CSV: {input_file}")
 
     # Only read needed columns
     needed_cols = ["Time Stamp", "ID", "Extended", "Dir", "Bus", "LEN"] + [f"D{i}" for i in range(1, 9)]
