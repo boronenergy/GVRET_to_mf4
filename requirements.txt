@@ -1,4 +1,4 @@
-asammdf
-pandas
-numpy
+asammdf >= 8.2.9
+pandas >= 2.2.2
+numpy >= 2.2.5
 cantools >= 39.4.5
