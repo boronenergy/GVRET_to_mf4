@@ -122,6 +122,7 @@ def convert_gvret_to_mf4(
             # Turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
             message = db.decode_message(row[idx_id], bytes(row[idx_data]), decode_choices=False)
         except KeyError:
+            logging.warning(f"Unknown CAN ID {row[idx_id]} at row {idx}, skipping")
             continue
         except Exception as e:
             if idx < 10 or idx % 10000 == 0:
@@ -129,6 +130,7 @@ def convert_gvret_to_mf4(
             continue
         timestamp = row[idx_time]
         if timestamp is None or pd.isna(timestamp):
+            logging.warning(f"Invalid timestamp at row {idx}, skipping")
             continue
         for signal, value in message.items():
             if signal not in data:
