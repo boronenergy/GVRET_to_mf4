@@ -14,6 +14,7 @@ TODO:
 - try importing this as submodule into firmware project
 - set output folder as a parameter OR can this be set using output file with relative pathing?
 - try both python import and command line run
+- time axis is off by 100x, why?
 
 > turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
 - this is bad, can we fix this?
@@ -51,13 +52,26 @@ def convert_gvret_to_mf4(
         logging.error(f"DBC file not found: {dbc_path}")
         raise FileNotFoundError(f"DBC file not found: {dbc_path}")
 
-    # Data types for each column in the GVRET log file
+    # Only read needed columns
+    needed_cols = ["Time Stamp", "ID", "Extended", "Dir", "Bus", "LEN"] + [f"D{i}" for i in range(1, 9)]
+    # Optimize dtypes: use category for repeated strings, smallest ints for numerics
     data_types = {
-        "Time Stamp": np.uint64, "ID": str, "Extended": bool, "Dir": str, "Bus": int, "LEN": int,
-        "D1": str, "D2": str, "D3": str, "D4": str, "D5": str, "D6": str, "D7": str, "D8": str
+        "Time Stamp": np.uint64,
+        "ID": "category",
+        "Extended": bool,
+        "Dir": "category",
+        "Bus": np.uint8,
+        "LEN": np.uint8,
+        **{f"D{i}": str for i in range(1, 9)}
     }
 
-    # Vectorized conversion of D1-D8 columns to bytes
+    try:
+        df = pd.read_csv(input_file, dtype=data_types, usecols=needed_cols, index_col=False)
+    except Exception as e:
+        logging.error(f"Failed to read input CSV: {e}")
+        raise
+
+    # Vectorized conversion of D1-D8 columns to bytes (must be after reading CSV)
     hex_cols = [f'D{i}' for i in range(1, 9)]
     df['DataHex'] = df[hex_cols].agg(''.join, axis=1)
     try:
@@ -65,17 +79,12 @@ def convert_gvret_to_mf4(
     except Exception as e:
         logging.error(f"Failed to convert data bytes for some rows: {e}")
         raise
+    df.drop(columns=['DataHex'], inplace=True)
 
     try:
         db = cantools.database.load_file(dbc_path)
     except Exception as e:
         logging.error(f"Failed to load DBC file: {e}")
-        raise
-
-    try:
-        df = pd.read_csv(input_file, dtype=data_types, index_col=False)
-    except Exception as e:
-        logging.error(f"Failed to read input CSV: {e}")
         raise
 
     if "Time Stamp" not in df.columns or "ID" not in df.columns:
@@ -107,7 +116,6 @@ def convert_gvret_to_mf4(
         logging.error(f"Failed to convert CAN IDs: {e}")
         raise
 
-
     mdf = MDF()
     data = {}
     total_rows = len(df)
@@ -118,29 +126,26 @@ def convert_gvret_to_mf4(
     idx_id = col_idx['ID']
     idx_data = col_idx['Data']
 
+    # Only log at start/end and on error for speed
+    logging.info(f"Starting CAN message decoding for {total_rows} rows...")
     for idx, row in enumerate(df.itertuples(index=False, name=None), 1):
-        if idx % 5000 == 0 or idx == total_rows:
-            logging.info(f"Processed row {idx} of {total_rows}")
         try:
-            # Turn off decode_choices to avoid decoding enumerations into strings since mf4 only supports numbers
             message = db.decode_message(row[idx_id], bytes(row[idx_data]), decode_choices=False)
         except KeyError:
-            logging.warning(f"CAN ID {row[idx_id]} not found in DBC. Skipping row {idx}.")
             continue
         except Exception as e:
-            logging.error(f"Failed to decode message at row {idx}: {e}")
+            if idx < 10 or idx % 10000 == 0:
+                logging.error(f"Failed to decode message at row {idx}: {e}")
             continue
-
         timestamp = row[idx_time]
         if timestamp is None or pd.isna(timestamp):
-            logging.warning(f"Row {idx} has invalid timestamp. Skipping.")
             continue
         for signal, value in message.items():
             if signal not in data:
                 data[signal] = ([], [])  # (timestamps, samples)
             data[signal][0].append(timestamp)
             data[signal][1].append(value)
-
+    logging.info(f"Finished CAN message decoding.")
 
     logging.info(f"File {input_file} converted successfully, saving to MDF4...")
     for key, value in data.items():
