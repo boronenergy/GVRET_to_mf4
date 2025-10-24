@@ -21,6 +21,9 @@ from asammdf import MDF, Signal
 import cantools
 from concurrent.futures import ThreadPoolExecutor
 
+_INITIAL_ERROR_LOG_COUNT = 10
+_ERROR_LOG_INTERVAL = 10000
+
 def convert_gvret_to_mf4(
     input_file: str,
     output_file: str,
@@ -138,7 +141,7 @@ def convert_gvret_to_mf4(
             logging.warning(f"Unknown CAN ID {row[idx_id]} at row {idx}, skipping")
             continue
         except Exception as e:
-            if idx < 10 or idx % 10000 == 0:
+            if idx < _INITIAL_ERROR_LOG_COUNT or idx % _ERROR_LOG_INTERVAL == 0:
                 logging.error(f"Failed to decode message at row {idx}: {e}")
             continue
         timestamp = row[idx_time]
