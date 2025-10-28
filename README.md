@@ -2,6 +2,12 @@
 
 This repository provides a Python script for converting CAN bus GVRET CSV log files (SavvyCAN) to MF4 format (compatible with asammdf).
 
+## CAN Logging Workflow
+
+- [SavvyCAN](https://github.com/collin80/SavvyCAN) is an open-source, free CAN logging software compatible with socketcan, Vector, PeakCAN, and TinyCAN interfaces.
+- SavvyCAN is great for real-time logging, but lacks great UI for debugging large logs with many signals. This is where [asammdfgui](https://www.csselectronics.com/pages/asammdf-gui-api-mdf4-mf4) shines.
+- This library converts SavvyCAN GVRET CSV logs to asammdfgui-compatible MF4 files.
+
 ## Usage
 Clone and install dependencies:
    ```bash
